@@ -6,5 +6,6 @@
 public enum ValueMessageType
 {
     Raw,
-    Json
+    Json,
+    MessagePack
 }

@@ -47,7 +47,7 @@ public class TopicConfiguration
     /// <summary>
     /// Message format in export JSON.
     /// </summary>
-    public bool ExportRawMessage { get; set; }
+    public ValueMessageType ValueMessageType { get; set; }
 
     /// <summary>
     /// Optional filter key value.
@@ -79,7 +79,7 @@ public class TopicConfiguration
                                          KeyType,
                                          typedFilterKeyValue!,
                                          dateRange,
-                                         ExportRawMessage,
+                                         ValueMessageType == ValueMessageType.Raw,
                                          PartitionsIds);
     }
 }

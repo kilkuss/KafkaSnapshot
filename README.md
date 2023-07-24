@@ -41,61 +41,11 @@ Config example:
     "GlobalSortOrder": "Ask",
     "Topics": [
       {
-        "Name": "topic1",
-        "KeyType": "Json",
-        "Compacting": "On",
+        "Name": "mp-topic",
+        "KeyType": "String",
+        "Compacting": "Off",
         "ExportFileName": "topic1.json",
-        "FilterKeyType": "Equals",
-        "FilterKeyValue": "{\"value\": 1 }",
-        "OffsetStartDate": "09.01.2021 12:12:12",
-        "OffsetEndDate": "09.01.2021 14:12:12",
-        "ExportRawMessage": true,
-        "PartitionsIds": [ 0, 2 ]
-      },
-      {
-        "Name": "topic2",
-        "KeyType": "String",
-        "Compacting": "Off",
-        "ExportFileName": "topic2.json"
-      },
-      {
-        "Name": "topic3",
-        "KeyType": "Long",
-        "Compacting": "Off",
-        "ExportFileName": "topic3.json",
-        "FilterKeyType": "Equals",
-        "FilterKeyValue": 42
-      },
-      {
-        "Name": "topic4",
-        "KeyType": "Ignored",
-        "Compacting": "Off",
-        "ExportFileName": "topic4.json"
-      },
-      {
-        "Name": "topic5",
-        "KeyType": "String",
-        "Compacting": "Off",
-        "FilterKeyType": "Contains",
-        "FilterKeyValue": "Test",
-        "ExportRawMessage": true,
-        "ExportFileName": "topic5.json"
-      },
-      {
-        "Name": "topic6",
-        "KeyType": "Long",
-        "Compacting": "Off",
-        "FilterKeyType": "LessOrEquals",
-        "FilterKeyValue": 3,
-        "ExportFileName": "topic6.json"
-      },
-      {
-        "Name": "topic7",
-        "KeyType": "Long",
-        "Compacting": "Off",
-        "FilterKeyType": "GreaterOrEquals",
-        "FilterKeyValue": 3,
-        "ExportFileName": "topic7.json"
+        "ValueMessageType": "MessagePack"
       }
 ```
 Config params:
@@ -121,7 +71,8 @@ Config params:
 | FilterKeyValue | Sample value for filtering (if FilterKeyType sets as 'Equals', 'Contains','GreaterOrEquals' or 'LessOrEquals') |
 | OffsetStartDate | First message date (optional). Use to skip old messages in large topics. Format MM.DD.YYYY HH:MM:SS (Local timezone)|
 | OffsetEndDate | Message date top limit (optional). Use to limit filtering messages in large topics. Format MM.DD.YYYY HH:MM:SS (Local timezone)|
-| ExportRawMessage | If true - export will write message as raw string without converting to formatted json (optional)|
+| ~~ ExportRawMessage ~~ | ~~ If true - export will write message as raw string without converting to formatted json (optional). ~~|
+| ValueMessageType | Apache Kafka topic value representation (Raw,Json,MessagePack) |
 | PartitionsIds | Partitions ids filter (optional)|
 | UseFileStreaming | Serializes loaded data to file directly via FileStream (Avoids OOM issue for large amounts of data). Better effect with disabled sorting (GlobalSortOrder No)|
 

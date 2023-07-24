@@ -2,11 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-
 using Confluent.Kafka;
-
 using Serilog;
-
 using KafkaSnapshot.Import;
 using KafkaSnapshot.Import.Metadata;
 using KafkaSnapshot.Processing;
@@ -60,10 +57,16 @@ public static class StartupHelper
     {
         services.ConfigureExport(hostContext);
 
-        services.AddSingleton<ISerializer<string, string, IgnoreKeyMarker>, IgnoreKeySerializer>();
-        services.AddSingleton<ISerializer<string, string, JsonKeyMarker>, JsonKeySerializer>();
-        services.AddSingleton<ISerializer<string, string, OriginalKeyMarker>, OriginalKeySerializer<string>>();
-        services.AddSingleton<ISerializer<long, string, OriginalKeyMarker>, OriginalKeySerializer<long>>();
+        services.AddSingleton<ISerializer<string, string, IgnoreKeyMarker>, IgnoreKeySerializer<string>>();
+        services.AddSingleton<ISerializer<string, string, JsonKeyMarker>, JsonKeySerializer<string>>();
+        services.AddSingleton<ISerializer<string, string, OriginalKeyMarker>, OriginalKeySerializer<string, string>>();
+        services.AddSingleton<ISerializer<long, string, OriginalKeyMarker>, OriginalKeySerializer<long, string>>();
+
+        services.AddSingleton<ISerializer<string, byte[], IgnoreKeyMarker>, IgnoreKeySerializer<byte[]>>();
+        services.AddSingleton<ISerializer<string, byte[], JsonKeyMarker>, JsonKeySerializer<byte[]>>();
+        services.AddSingleton<ISerializer<string, byte[], OriginalKeyMarker>, OriginalKeySerializer<string, byte[]>>();
+        services.AddSingleton<ISerializer<long, byte[], OriginalKeyMarker>, OriginalKeySerializer<long, byte[]>>();
+
         services.AddSingleton(typeof(IDataExporter<,,,>), typeof(JsonFileDataExporter<,,,>));
         services.AddSingleton<IFileSaver, FileSaver>();
         services.AddSingleton<IFileStreamProvider, FileStreamProvider>();
@@ -75,8 +78,8 @@ public static class StartupHelper
     public static void AddLogging(this IServiceCollection services, HostBuilderContext hostContext)
     {
         var logger = new LoggerConfiguration()
-                         .ReadFrom.Configuration(hostContext.Configuration)
-                         .CreateLogger();
+            .ReadFrom.Configuration(hostContext.Configuration)
+            .CreateLogger();
 
         services.AddLogging(x =>
         {
@@ -89,12 +92,13 @@ public static class StartupHelper
     /// Add topic loaders.
     /// </summary>
     public static void AddTopicLoaders(
-        this IServiceCollection services, 
+        this IServiceCollection services,
         HostBuilderContext hostContext)
     {
         services.AddSingleton<IKeyFiltersFactory<long>, NaiveKeyFiltersFactory<long>>();
         services.AddSingleton<IKeyFiltersFactory<string>, NaiveKeyFiltersFactory<string>>();
         services.AddSingleton<IValueFilterFactory<string>, NaiveValueFiltersFactory<string>>();
+        services.AddSingleton<IValueFilterFactory<byte[]>, NaiveValueFiltersFactory<byte[]>>();
         services.AddSingleton(sp => CreateTopicLoaders(sp, hostContext.Configuration));
     }
 
@@ -122,7 +126,7 @@ public static class StartupHelper
 
         services.AddSingleton<ITopicWatermarkLoader, TopicWatermarkLoader>();
 
-        IConsumer<Key, string> createConsumer<Key>(IServiceProvider sp)
+        IConsumer<Key, TValue> createConsumer<Key, TValue>(IServiceProvider sp)
         {
             var config = sp.GetBootstrapConfig(hostContext.Configuration);
             var servers = string.Join(",", config.BootstrapServers);
@@ -138,13 +142,17 @@ public static class StartupHelper
                 SaslPassword = config.Password
             };
 
-            return new ConsumerBuilder<Key, string>(conf).Build();
+            return new ConsumerBuilder<Key, TValue>(conf).Build();
         }
 
         services.AddSingleton<Func<IConsumer<string, string>>>(
-            sp => () => createConsumer<string>(sp));
+            sp => () => createConsumer<string, string>(sp));
         services.AddSingleton<Func<IConsumer<long, string>>>(
-            sp => () => createConsumer<long>(sp));
+            sp => () => createConsumer<long, string>(sp));
+        services.AddSingleton<Func<IConsumer<string, byte[]>>>(
+            sp => () => createConsumer<string, byte[]>(sp));
+        services.AddSingleton<Func<IConsumer<long, byte[]>>>(
+            sp => () => createConsumer<long, byte[]>(sp));
         services.AddSingleton(typeof(ISnapshotLoader<,>), typeof(SnapshotLoader<,>));
 
         IMessageSorter<TKey, TValue> createSorter<TKey, TValue>(IServiceProvider sp)
@@ -154,33 +162,60 @@ public static class StartupHelper
             return new MessageSorter<TKey, TValue>(
                 new Models.Sorting.SortingParams(config.GlobalMessageSort, config.GlobalSortOrder));
         }
+
         services.AddSingleton(sp => createSorter<string, string>(sp));
         services.AddSingleton(sp => createSorter<long, string>(sp));
+        services.AddSingleton(sp => createSorter<string, byte[]>(sp));
+        services.AddSingleton(sp => createSorter<long, byte[]>(sp));
     }
 
     private static IReadOnlyCollection<IProcessingUnit> CreateTopicLoaders(
-        IServiceProvider sp, 
+        IServiceProvider sp,
         IConfiguration configuration)
     {
         var config = sp.GetLoaderConfig(configuration);
 
-        return config.Topics.Select(topic => topic.KeyType switch
+        return config.Topics.Select(topic => topic.ValueMessageType switch
         {
-            KeyType.Ignored => InitUnit<string, IgnoreKeyMarker>(topic, sp),
-            KeyType.Json => InitUnit<string, JsonKeyMarker>(topic, sp),
-            KeyType.String => InitUnit<string, OriginalKeyMarker>(topic, sp),
-            KeyType.Long => InitUnit<long, OriginalKeyMarker>(topic, sp),
-            _ => throw new InvalidOperationException($"Invalid Key type " +
-            $"{topic.KeyType} for processing.")
+            ValueMessageType.Raw => topic.KeyType switch
+            {
+                KeyType.Ignored => InitUnit<string, IgnoreKeyMarker, string>(topic, sp),
+                KeyType.Json => InitUnit<string, JsonKeyMarker, string>(topic, sp),
+                KeyType.String => InitUnit<string, OriginalKeyMarker, string>(topic, sp),
+                KeyType.Long => InitUnit<long, OriginalKeyMarker, string>(topic, sp),
+                _ => throw new InvalidOperationException($"Invalid Key type " +
+                                                         $"{topic.KeyType} for processing.")
+            },
+            ValueMessageType.Json => topic.KeyType switch
+            {
+                KeyType.Ignored => InitUnit<string, IgnoreKeyMarker, string>(topic, sp),
+                KeyType.Json => InitUnit<string, JsonKeyMarker, string>(topic, sp),
+                KeyType.String => InitUnit<string, OriginalKeyMarker, string>(topic, sp),
+                KeyType.Long => InitUnit<long, OriginalKeyMarker, string>(topic, sp),
+                _ => throw new InvalidOperationException($"Invalid Key type " +
+                                                         $"{topic.KeyType} for processing.")
+            },
+            ValueMessageType.MessagePack => topic.KeyType switch
+            {
+                KeyType.Ignored => InitUnit<string, IgnoreKeyMarker, byte[]>(topic, sp),
+                KeyType.Json => InitUnit<string, JsonKeyMarker, byte[]>(topic, sp),
+                KeyType.String => InitUnit<string, OriginalKeyMarker, byte[]>(topic, sp),
+                KeyType.Long => InitUnit<long, OriginalKeyMarker, byte[]>(topic, sp),
+                _ => throw new InvalidOperationException($"Invalid Key type " +
+                                                         $"{topic.KeyType} for processing.")
+            },
+            _ => throw new InvalidOperationException($"Invalid ValueMessageType " +
+                                                     $"{topic.ValueMessageType} for processing.")
         }).ToList();
     }
 
-    private static IProcessingUnit InitUnit<TKey, TMarker>(
-                            TopicConfiguration topic,
-                            IServiceProvider provider)
-                            where TKey : notnull where TMarker : IKeyRepresentationMarker
-       => ActivatorUtilities.CreateInstance<ProcessingUnit<TKey, TMarker, string>>(
-           provider, 
-           topic.ConvertToProcess<TKey>());
-
+    private static IProcessingUnit InitUnit<TKey, TMarker, TMessage>(
+        TopicConfiguration topic,
+        IServiceProvider provider)
+        where TKey : notnull
+        where TMarker : IKeyRepresentationMarker
+        where TMessage : notnull
+        => ActivatorUtilities.CreateInstance<ProcessingUnit<TKey, TMarker, TMessage>>(
+            provider,
+            topic.ConvertToProcess<TKey>());
 }

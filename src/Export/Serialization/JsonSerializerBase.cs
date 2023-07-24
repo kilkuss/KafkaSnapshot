@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics;
 using System.Text;
-
+using MessagePack;
 using Microsoft.Extensions.Logging;
 
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace KafkaSnapshot.Export.Serialization;
 
@@ -54,6 +55,40 @@ public abstract class JsonSerializerBase
         _serializer.Serialize(jsonWriter, data);
 
         _logger.LogTrace("Finish serializing data.");
+    }
+
+    protected static object SerializeValueMassage<TMessage>(
+        TMessage message, 
+        bool exportRawMessage)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        
+        if (typeof(TMessage) == typeof(byte[]))
+        {
+            var bytes = message as byte[];
+            if (exportRawMessage)
+            {
+                return bytes!;
+            }
+
+            return MessagePackSerializer.ConvertToJson(
+                bytes,
+                MessagePackSerializerOptions.Standard.WithCompression(
+                    MessagePackCompression.Lz4Block));
+        }
+
+        if (typeof(TMessage) == typeof(string))
+        {
+            var stringMassage = message as string;
+            if (exportRawMessage)
+            {
+                return stringMassage!;
+            }
+
+            return JToken.Parse(stringMassage!);
+        }
+
+        throw new InvalidOperationException("Not support value massage type.");
     }
 
     private readonly JsonSerializer _serializer = new() { Formatting = Formatting.Indented };

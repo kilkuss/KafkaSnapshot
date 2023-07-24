@@ -11,17 +11,18 @@ namespace KafkaSnapshot.Export.Serialization;
 /// <summary>
 /// Serializer for data with no keys.
 /// </summary>
-public class IgnoreKeySerializer : JsonSerializerBase, ISerializer<string, string, IgnoreKeyMarker>
+public class IgnoreKeySerializer<TMessage> : JsonSerializerBase, ISerializer<string, TMessage, IgnoreKeyMarker> 
+    where TMessage : notnull
 {
     /// <summary>
     /// Creates <see cref="IgnoreKeySerializer"/>.
     /// </summary>
     /// <param name="logger">Logger.</param>
     /// <exception cref="ArgumentNullException">Thrown when logger is null.</exception>
-    public IgnoreKeySerializer(ILogger<IgnoreKeySerializer> logger) : base(logger) { }
+    public IgnoreKeySerializer(ILogger<IgnoreKeySerializer<TMessage>> logger) : base(logger) { }
 
     private object ProjectData(
-                    IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+                    IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
                     bool exportRawMessage)
     {
         if (data.Any(x => x.Key is not null))
@@ -32,7 +33,7 @@ public class IgnoreKeySerializer : JsonSerializerBase, ISerializer<string, strin
 
         var items = data.Select(x => new
         {
-            Value = exportRawMessage ? x.Value.Message : JToken.Parse(x.Value.Message),
+            Value = SerializeValueMassage(x.Value.Message, exportRawMessage),
             x.Value.Meta
         });
 
@@ -42,7 +43,7 @@ public class IgnoreKeySerializer : JsonSerializerBase, ISerializer<string, strin
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
     public string Serialize(
-            IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+            IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
             bool exportRawMessage)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -53,7 +54,7 @@ public class IgnoreKeySerializer : JsonSerializerBase, ISerializer<string, strin
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException">Thrown when data or stream is null.</exception>
     public void Serialize(
-            IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+            IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
             bool exportRawMessage, 
             Stream stream)
     {

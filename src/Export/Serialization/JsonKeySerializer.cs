@@ -11,7 +11,8 @@ namespace KafkaSnapshot.Export.Serialization;
 /// <summary>
 /// Serializer for data with json keys.
 /// </summary>
-public class JsonKeySerializer : JsonSerializerBase, ISerializer<string, string, JsonKeyMarker>
+public class JsonKeySerializer<TMessage> : JsonSerializerBase, ISerializer<string, TMessage, JsonKeyMarker> 
+    where TMessage : notnull
 {
 
     /// <summary>
@@ -19,22 +20,22 @@ public class JsonKeySerializer : JsonSerializerBase, ISerializer<string, string,
     /// </summary>
     /// <param name="logger">Logger.</param>
     /// <exception cref="ArgumentNullException">Thrown when logger is null.</exception>
-    public JsonKeySerializer(ILogger<JsonKeySerializer> logger) : base(logger) { }
+    public JsonKeySerializer(ILogger<JsonKeySerializer<TMessage>> logger) : base(logger) { }
 
     private static object ProjectData(
-                IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+                IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
                 bool exportRawMessage)
         => data.Select(x => new
         {
             Key = JToken.Parse(x.Key),
-            Value = exportRawMessage ? x.Value.Message : JToken.Parse(x.Value.Message),
+            Value = SerializeValueMassage(x.Value.Message, exportRawMessage),
             x.Value.Meta
         });
 
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
     public string Serialize(
-            IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+            IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
             bool exportRawMessage)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -45,7 +46,7 @@ public class JsonKeySerializer : JsonSerializerBase, ISerializer<string, string,
     /// <inheritdoc/>
     /// <exception cref="ArgumentNullException">Thrown when data or stream is null.</exception>
     public void Serialize(
-            IEnumerable<KeyValuePair<string, KafkaMessage<string>>> data, 
+            IEnumerable<KeyValuePair<string, KafkaMessage<TMessage>>> data, 
             bool exportRawMessage, 
             Stream stream)
     {
